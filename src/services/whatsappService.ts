@@ -41,10 +41,39 @@ export class WhatsAppService {
       console.log('WhatsApp client está listo');
     });
 
-    whatsappEvents.on('disconnected', () => {
+    whatsappEvents.on('disconnected', (reason) => {
       this.isClientReady = false;
       this.currentQR = null;
-      console.log('WhatsApp client se desconectó');
+      console.log(`WhatsApp client se desconectó: ${reason}`);
+      this.saveStatusToDatabase('disconnected', { reason }).catch((err: Error) => 
+        console.error('Error al guardar estado de desconexión:', err)
+      );
+    });
+    
+    // Eventos relacionados con la sesión
+    whatsappEvents.on('logout_success', () => {
+      this.isClientReady = false;
+      this.currentQR = null;
+      console.log('Sesión cerrada exitosamente');
+      this.saveStatusToDatabase('logout', { timestamp: Date.now() }).catch((err: Error) => 
+        console.error('Error al guardar estado de cierre de sesión:', err)
+      );
+    });
+    
+    whatsappEvents.on('logout_error', (error) => {
+      console.error('Error al cerrar sesión:', error);
+      this.saveStatusToDatabase('logout_error', { error: error.toString() }).catch((err: Error) => 
+        console.error('Error al guardar estado de error de cierre de sesión:', err)
+      );
+    });
+    
+    whatsappEvents.on('session_deleted', () => {
+      this.isClientReady = false;
+      this.currentQR = null;
+      console.log('Datos de sesión eliminados');
+      this.saveStatusToDatabase('session_deleted', { timestamp: Date.now() }).catch((err: Error) => 
+        console.error('Error al guardar estado de eliminación de sesión:', err)
+      );
     });
 
     whatsappEvents.on('message', async (message) => {
@@ -68,21 +97,34 @@ export class WhatsAppService {
     }
   }
 
-  // Guardar QR en la base de datos
-  private async saveQRToDatabase(qrData: string): Promise<void> {
+  // Guardar el QR en la base de datos para un acceso posterior
+  private async saveQRToDatabase(qrData: string) {
     try {
       const db = await getDatabase();
-      
-      // Convertir el QR a imagen base64
-      const qrImageBase64 = await qrcode.toDataURL(qrData);
-      
-      // Guardar en la base de datos
+      // Guardar en la tabla de QR
       await db.query(
-        'INSERT INTO qr_codes (qr_data, qr_image, created_at) VALUES (?, ?, NOW()) ON DUPLICATE KEY UPDATE qr_data = ?, qr_image = ?, created_at = NOW()',
-        [qrData, qrImageBase64, qrData, qrImageBase64]
+        'INSERT INTO qr_codes (qr_data, created_at) VALUES (?, NOW()) ' +
+        'ON DUPLICATE KEY UPDATE qr_data = ?, updated_at = NOW()',
+        [qrData, qrData]
       );
     } catch (error) {
       console.error('Error al guardar QR en la base de datos:', error);
+      // No lanzamos el error para que no interrumpa el flujo
+    }
+  }
+  
+  // Guardar el estado del cliente en la base de datos
+  private async saveStatusToDatabase(status: string, data: Record<string, any>) {
+    try {
+      const db = await getDatabase();
+      // Guardar en la tabla de estados
+      await db.query(
+        'INSERT INTO whatsapp_status (status_type, status_data, created_at) VALUES (?, ?, NOW())',
+        [status, JSON.stringify(data)]
+      );
+    } catch (error: any) {
+      console.error(`Error al guardar estado '${status}' en la base de datos:`, error);
+      // No lanzamos el error para que no interrumpa el flujo
     }
   }
 
@@ -139,6 +181,41 @@ export class WhatsAppService {
   // Verificar si el cliente está listo
   public isReady(): boolean {
     return this.isClientReady;
+  }
+  
+  // Obtener información de la sesión actual
+  public async getSessionInfo() {
+    return await whatsappClient.getSessionInfo();
+  }
+  
+  // Cerrar la sesión actual
+  public async logout() {
+    try {
+      await whatsappClient.logout();
+      return { success: true, message: 'Sesión cerrada correctamente' };
+    } catch (error) {
+      console.error('Error al cerrar sesión desde el servicio:', error);
+      return { 
+        success: false, 
+        message: 'Error al cerrar sesión', 
+        error: (error as Error).message 
+      };
+    }
+  }
+  
+  // Eliminar datos de sesión
+  public async deleteSession() {
+    try {
+      await whatsappClient.deleteSession();
+      return { success: true, message: 'Datos de sesión eliminados correctamente' };
+    } catch (error) {
+      console.error('Error al eliminar datos de sesión desde el servicio:', error);
+      return { 
+        success: false, 
+        message: 'Error al eliminar datos de sesión', 
+        error: (error as Error).message 
+      };
+    }
   }
 
   // Enviar mensaje a un número específico

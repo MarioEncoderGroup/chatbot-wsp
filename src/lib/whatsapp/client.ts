@@ -99,6 +99,11 @@ export class WhatsAppClient {
     // Evento cuando se recibe un mensaje
     this.client.on(Events.MESSAGE_RECEIVED, async (message) => {
       console.log(`Mensaje recibido: ${message.body} de ${message.from}`);
+      
+      // Procesar el mensaje para detectar comandos
+      await this.processMessageCommands(message);
+      
+      // Emitir el evento para otros manejadores
       whatsappEvents.emit('message', message);
     });
 
@@ -235,14 +240,248 @@ export class WhatsAppClient {
     return this.isInitialized;
   }
 
-  // Desconectar el cliente
+  // Desconectar el cliente y cerrar sesión
   public async logout() {
-    if (this.isInitialized) {
-      await this.client.logout();
-      this.isInitialized = false;
-      return true;
+    if (this.client && this.isInitialized) {
+      try {
+        console.log('Cerrando sesión de WhatsApp...');
+        await this.client.logout();
+        console.log('Sesión de WhatsApp cerrada exitosamente');
+        this.isInitialized = false;
+        whatsappEvents.emit('logout_success');
+        return true;
+      } catch (error) {
+        console.error('Error al cerrar sesión de WhatsApp:', error);
+        whatsappEvents.emit('logout_error', error);
+        throw error;
+      }
+    } else {
+      console.warn('No hay una sesión activa para cerrar');
+      return false;
     }
-    return false;
+  }
+
+  // Obtener información de la sesión actual
+  public async getSessionInfo() {
+    if (this.client && this.isInitialized) {
+      try {
+        // Intentamos obtener el estado de la sesión
+        const state = await this.client.getState();
+        let phoneNumber = null;
+        
+        // WhatsApp Web JS no proporciona un método directo para obtener solo
+        // el número de teléfono en esta versión, así que usaremos el ID de la sesión
+        // que es suficiente para identificar la sesión activa
+        try {
+          // Intentar obtener información adicional si es posible
+          const info = this.client.info;
+          if (info) {
+            console.log('Información de la sesión disponible');
+          }
+        } catch (infoError) {
+          console.warn('No se pudo obtener información adicional de la sesión:', infoError);
+        }
+        
+        return {
+          state, // 'CONNECTED', 'DISCONNECTED', etc.
+          connected: state === 'CONNECTED',
+          ready: this.isInitialized,
+          authenticated: true,
+          phoneNumber,
+          sessionId: `session_${Date.now()}` // Identificador único para la sesión
+        };
+      } catch (error) {
+        console.error('Error al obtener información de la sesión:', error);
+        return {
+          state: 'ERROR',
+          connected: false,
+          ready: false,
+          authenticated: this.isInitialized, // Si está inicializado pero hay error, probablemente sí está autenticado
+          phoneNumber: null,
+          error: (error as Error).message
+        };
+      }
+    } else {
+      return {
+        state: 'DISCONNECTED',
+        connected: false,
+        ready: false,
+        authenticated: false,
+        phoneNumber: null
+      };
+    }
+  }
+  
+  // Eliminar los datos de sesión almacenados localmente
+  public async deleteSession() {
+    try {
+      // Primero intentamos cerrar la sesión correctamente
+      if (this.isInitialized) {
+        try {
+          await this.logout();
+        } catch (logoutError) {
+          console.warn('No se pudo cerrar sesión correctamente, procediendo a eliminar datos locales:', logoutError);
+        }
+      }
+      
+      // Lista de directorios relacionados con WhatsApp Web.js que deben ser eliminados
+      const dirsToDelete = [
+        path.resolve(SESSION_DIR),      // Directorio principal de sesión
+        path.resolve('./.wwebjs_auth'), // Directorio de autenticación
+        path.resolve('./.wwebjs_cache') // Directorio de caché
+      ];
+      
+      // Usamos un enfoque recursivo para eliminar el directorio
+      const deleteFolderRecursive = (pathToDelete: string) => {
+        if (fs.existsSync(pathToDelete)) {
+          try {
+            fs.readdirSync(pathToDelete).forEach((file) => {
+              const curPath = path.join(pathToDelete, file);
+              if (fs.lstatSync(curPath).isDirectory()) {
+                // Es un directorio, eliminar recursivamente
+                deleteFolderRecursive(curPath);
+              } else {
+                // Es un archivo, eliminarlo
+                try {
+                  fs.unlinkSync(curPath);
+                } catch (unlinkError) {
+                  console.error(`Error al eliminar archivo ${curPath}:`, unlinkError);
+                }
+              }
+            });
+            // Finalmente eliminar el directorio vacío
+            try {
+              fs.rmdirSync(pathToDelete);
+            } catch (rmdirError) {
+              console.error(`Error al eliminar directorio ${pathToDelete}:`, rmdirError);
+            }
+          } catch (readError) {
+            console.error(`Error al leer directorio ${pathToDelete}:`, readError);
+          }
+        }
+      };
+      
+      let allDeleted = true;
+      let deletedAny = false;
+      
+      // Eliminar cada directorio de la lista
+      for (const dir of dirsToDelete) {
+        if (fs.existsSync(dir)) {
+          console.log(`Eliminando directorio: ${dir}`);
+          try {
+            deleteFolderRecursive(dir);
+            deletedAny = true;
+            // Verificar si realmente se eliminó
+            if (fs.existsSync(dir)) {
+              console.warn(`¡Advertencia! El directorio ${dir} aún existe después de intentar eliminarlo`);
+              allDeleted = false;
+              
+              // Intento adicional con comandos del sistema como último recurso
+              try {
+                const { execSync } = require('child_process');
+                if (process.platform === 'win32') {
+                  execSync(`rmdir /s /q "${dir}"`);
+                } else {
+                  execSync(`rm -rf "${dir}"`);
+                }
+                console.log(`Segundo intento de eliminación para ${dir} completado`);
+              } catch (execError) {
+                console.error(`Error en el segundo intento de eliminación para ${dir}:`, execError);
+              }
+            }
+          } catch (error) {
+            console.error(`Error al eliminar directorio ${dir}:`, error);
+            allDeleted = false;
+          }
+        }
+      }
+      
+      // Matar cualquier proceso de Chromium que pueda estar bloqueando archivos
+      try {
+        const { execSync } = require('child_process');
+        if (process.platform === 'win32') {
+          execSync('taskkill /f /im chrome.exe /t');
+        } else if (process.platform === 'darwin') { // macOS
+          execSync('pkill -f "Chromium|Google Chrome"');
+        } else { // Linux
+          execSync('pkill -f "chromium|chrome"');
+        }
+        console.log('Procesos de Chromium terminados');
+      } catch (killError) {
+        // Es normal que falle si no hay procesos para matar
+        console.log('No se encontraron procesos de Chromium para terminar o ya estaban cerrados');
+      }
+      
+      if (deletedAny) {
+        console.log(`Limpieza de sesión ${allDeleted ? 'completada exitosamente' : 'realizada con algunos problemas'}`);
+        whatsappEvents.emit('session_deleted');
+        
+        // Reiniciar la instancia para forzar una nueva inicialización
+        WhatsAppClient.instance = new WhatsAppClient();
+        return true;
+      } else {
+        console.log('No se encontraron datos de sesión para eliminar');
+        return true;
+      }
+    } catch (error) {
+      console.error('Error en el proceso de eliminación de sesión:', error);
+      whatsappEvents.emit('session_delete_error', error);
+      throw error;
+    }
+  }
+  
+  // Procesar los mensajes para detectar y responder comandos
+  private async processMessageCommands(message: Message) {
+    try {
+      const text = message.body.trim();
+      
+      if (!text) return; // Ignorar mensajes vacíos
+      
+      const db = await (await import('../database/mysql')).getDatabase();
+      
+      // Buscar comandos con prefijo
+      if (text.startsWith('!')) {
+        const command = text.toLowerCase();
+        
+        // Buscar en la base de datos el comando con prefijo
+        const results = await db.query(
+          'SELECT command, response FROM custom_commands WHERE command = ? AND use_prefix = 1',
+          [command]
+        );
+        
+        if (Array.isArray(results) && results.length > 0) {
+          const { response } = results[0];
+          await message.reply(response);
+          return;
+        }
+      }
+      
+      // Buscar comandos sin prefijo (coincidencia exacta con el texto completo)
+      const results = await db.query(
+        'SELECT command, response FROM custom_commands WHERE command = ? AND use_prefix = 0',
+        [text.toLowerCase()]
+      );
+      
+      if (Array.isArray(results) && results.length > 0) {
+        const { response } = results[0];
+        await message.reply(response);
+        return;
+      }
+      
+      // También buscar si el texto contiene un comando sin prefijo
+      const partialResults = await db.query(
+        'SELECT command, response FROM custom_commands WHERE use_prefix = 0 AND ? LIKE CONCAT("%", command, "%")',
+        [text.toLowerCase()]
+      );
+      
+      if (Array.isArray(partialResults) && partialResults.length > 0) {
+        const { response } = partialResults[0]; // Tomar la primera coincidencia
+        await message.reply(response);
+      }
+      
+    } catch (error) {
+      console.error('Error al procesar comandos:', error);
+    }
   }
 }
 
