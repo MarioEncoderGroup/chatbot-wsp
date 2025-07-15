@@ -46,6 +46,9 @@ export default function Header() {
             <Link href="/commands" className="text-gray-700 hover:text-green-600 transition">
               Comandos
             </Link>
+            <Link href="/lists" className="text-gray-700 hover:text-green-600 transition">
+              Listas
+            </Link>
             <Link href="/settings" className="text-gray-700 hover:text-green-600 transition">
               Configuración
             </Link>
@@ -64,6 +67,9 @@ export default function Header() {
               </Link>
               <Link href="/commands" className="text-gray-700 hover:text-green-600 transition">
                 Comandos
+              </Link>
+              <Link href="/lists" className="text-gray-700 hover:text-green-600 transition">
+                Listas
               </Link>
               <Link href="/settings" className="text-gray-700 hover:text-green-600 transition">
                 Configuración

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { whatsappClient } from '@/lib/whatsapp/client';
-import puppeteer from 'puppeteer';
+import * as puppeteer from 'puppeteer';
 import fs from 'fs';
 import path from 'path';
 import * as os from 'os';
@@ -28,23 +28,32 @@ export async function GET() {
     const packageJson = JSON.parse(fs.readFileSync('./package.json', 'utf8'));
     
     // Intenta obtener la versión de Puppeteer
-    let puppeteerVersion;
+    let puppeteerVersion = 'Desconocida';
     let puppeteerInfo;
     try {
-      puppeteerVersion = puppeteer.version;
+      // Obtenemos la versión desde el package.json en lugar de la API
+      const puppeteerPackageVersion = packageJson.dependencies['puppeteer'] || packageJson.devDependencies['puppeteer'] || 'Desconocida';
+      puppeteerVersion = puppeteerPackageVersion;
+      
       const browser = await puppeteer.launch({ 
         headless: true,
         args: ['--no-sandbox'] 
       });
+      
+      // Usamos la función getBrowserInfo para obtener la información en lugar de acceder directamente
+      const browserVersion = await browser.version();
+      
       puppeteerInfo = {
         version: puppeteerVersion,
-        executablePath: browser.executablePath(),
+        browserVersion: browserVersion,
         userAgent: await browser.userAgent()
       };
+      
       await browser.close();
-    } catch (error) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
       puppeteerInfo = {
-        error: 'Error al inicializar Puppeteer: ' + error.message
+        error: 'Error al inicializar Puppeteer: ' + errorMessage
       };
     }
 
@@ -84,11 +93,12 @@ export async function GET() {
         initialized: clientStatus
       }
     }, { status: 200 });
-  } catch (error) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
     return NextResponse.json({
       status: 'error',
       message: 'Error al obtener información de diagnóstico',
-      error: error.message
+      error: errorMessage
     }, { status: 500 });
   }
 }

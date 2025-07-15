@@ -10,6 +10,7 @@ interface Command {
   command: string;
   response: string;
   use_prefix: boolean;
+  response_type?: string;
   created_by: string;
   created_at: string;
 }
@@ -48,7 +49,11 @@ export default function CommandsPage() {
       const data = await response.json();
       
       if (data.success) {
-        setCommands(data.commands);
+        // Filtrar solo los comandos de tipo 'text' o sin tipo (para compatibilidad con registros antiguos)
+        const textCommands = data.commands.filter((cmd: Command) => 
+          !cmd.response_type || cmd.response_type === 'text'
+        );
+        setCommands(textCommands);
       } else {
         throw new Error(data.message || 'Error al cargar comandos');
       }
@@ -155,15 +160,16 @@ export default function CommandsPage() {
       setIsSubmitting(true);
       setSubmitError(null);
       
-      const response = await fetch(`/api/whatsapp/commands?id=${editingCommandId}`, {
+      const response = await fetch('/api/whatsapp/commands', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          id: editingCommandId,  // Incluir el ID en el cuerpo de la solicitud
           command: editCommand,
           response: editResponse,
-          usePrefix: editUsePrefix,
+          usePrefix: editUsePrefix, // Ya está en camelCase como lo espera el backend
         }),
       });
       
