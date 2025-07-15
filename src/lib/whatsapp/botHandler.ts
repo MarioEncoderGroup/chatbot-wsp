@@ -340,6 +340,23 @@ export class WhatsAppBotHandler {
     // Guardar el mensaje para futura referencia o análisis
     console.log(`Mensaje normal recibido: ${message.body} de ${message.from}`);
     
+    // Verificar primero si existe un comando personalizado en la base de datos
+    // para evitar respuestas duplicadas
+    try {
+      const db = await (await import('../database/mysql')).getDatabase();
+      const exactMatch = await db.query(
+        'SELECT command FROM custom_commands WHERE command = ? AND use_prefix = 0',
+        [message.body.toLowerCase().trim()]
+      );
+      
+      if (Array.isArray(exactMatch) && exactMatch.length > 0) {
+        console.log(`Se encontró un comando personalizado exacto para "${message.body}", evitando respuesta duplicada`);
+        return { success: true, message: 'Mensaje manejado por comandos personalizados' };
+      }
+    } catch (dbError) {
+      console.error('Error al verificar comandos personalizados:', dbError);
+    }
+    
     // Si es un mensaje multimedia, registrar el tipo
     if (message.hasMedia) {
       try {
@@ -354,9 +371,9 @@ export class WhatsAppBotHandler {
     // Respuestas basadas en el contenido del mensaje
     const content = message.body.toLowerCase();
     
-    // Matriz de respuestas a palabras clave
+    // Matriz de respuestas a palabras clave - EXCLUIMOS "hola" para evitar duplicaciones con comandos personalizados
     const keywordResponses = [
-      { keywords: ['hola', 'buenas', 'saludos'], response: '¡Hola! 👋 ¿En qué puedo ayudarte hoy?' },
+      // Ya no respondemos a "hola" aquí, lo gestionará el sistema de comandos personalizados
       { keywords: ['gracias', 'agradec'], response: '¡De nada! Estoy aquí para ayudar 😊' },
       { keywords: ['ayuda', 'help', 'comandos'], response: `Para ver la lista de comandos disponibles, envía *${this.prefix}help*` },
       { keywords: ['cómo estás', 'como estas'], response: 'Estoy funcionando perfectamente, gracias por preguntar! 🤖' },
@@ -369,8 +386,7 @@ export class WhatsAppBotHandler {
           'La única "persona" que escucha mis comandos sin cuestionar es mi WhatsApp Bot'
         ];
         return chistes[Math.floor(Math.random() * chistes.length)];
-      }}
-    ];
+      }}];
     
     // Buscar coincidencias y responder
     for (const kr of keywordResponses) {

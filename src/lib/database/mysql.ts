@@ -205,9 +205,35 @@ export class Database {
           command VARCHAR(50) NOT NULL UNIQUE,
           response TEXT NOT NULL,
           use_prefix BOOLEAN DEFAULT TRUE,
+          response_type VARCHAR(20) DEFAULT 'text',
           created_by VARCHAR(20),
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        )
+      `);
+      
+      // Tabla de secciones para listas de selección
+      await this.pool.query(`
+        CREATE TABLE IF NOT EXISTS list_sections (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          command_id INT,
+          title VARCHAR(100) NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (command_id) REFERENCES custom_commands(id) ON DELETE CASCADE
+        )
+      `);
+      
+      // Tabla de elementos para las listas de selección
+      await this.pool.query(`
+        CREATE TABLE IF NOT EXISTS list_items (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          section_id INT,
+          row_id VARCHAR(50) NOT NULL,
+          title VARCHAR(100) NOT NULL,
+          description VARCHAR(255),
+          response TEXT NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (section_id) REFERENCES list_sections(id) ON DELETE CASCADE
         )
       `);
       
