@@ -1,8 +1,43 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# WhatsApp Bot - Next.js Project
+
+This is a [Next.js](https://nextjs.org) project for managing a WhatsApp bot with custom commands and interactive lists.
+
+## Prerequisites
+
+- Node.js 18+ 
+- MySQL Database
+- WhatsApp Account
+
+## Environment Setup
+
+1. Copy the environment example file:
+```bash
+cp .env.example .env
+```
+
+2. Configure your database settings in `.env`:
+```bash
+# Database Configuration
+MYSQL_HOST=localhost
+MYSQL_USER=root
+MYSQL_PASSWORD=your_password_here
+MYSQL_DATABASE=whatsapp_bot
+MYSQL_PORT=3306
+
+# Application Configuration
+NODE_ENV=development
+```
 
 ## Getting Started
 
-First, run the development server:
+1. Install dependencies:
+```bash
+npm install
+```
+
+2. Set up your MySQL database with the credentials from your `.env` file
+
+3. Run the development server:
 
 ```bash
 npm run dev
