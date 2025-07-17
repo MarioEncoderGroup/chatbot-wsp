@@ -18,17 +18,19 @@ if (!fs.existsSync(SESSION_DIR)) {
   fs.mkdirSync(SESSION_DIR, { recursive: true });
 }
 
-// Clase para manejar el cliente de WhatsApp
-// Interfaz para almacenar las últimas opciones enviadas a un usuario
+// Tipo para opciones de usuario
+interface UserOptionItem {
+  number: number;
+  title: string;
+  description?: string;
+  sectionId: number;
+  itemId: string;
+  response?: string; // Respuesta asociada a esta opción (nuevo campo para modelo plano)
+}
+
 interface UserOptionsState {
-  commandId: number;         // ID del comando enviado
-  options: Array<{          // Opciones disponibles
-    number: number;         // Número de la opción (1, 2, 3...)
-    title: string;          // Título de la opción
-    description?: string;   // Descripción opcional
-    sectionId: number;      // ID de la sección a la que pertenece
-    itemId: string;         // ID del item dentro de la sección
-  }>;
+  commandId: number;
+  options: UserOptionItem[];
   timestamp: number;        // Timestamp para expirar las opciones antiguas (milisegundos)
 }
 
@@ -441,7 +443,7 @@ private async processMessageCommands(message: Message): Promise<void> {
       console.log(`Detectada posible respuesta numérica: ${selectedNumber}`);
       
       // Intentar procesar como respuesta a opciones previas
-      const processed = await this.processNumericResponse(message, selectedNumber);
+      const processed = await this.processNumericResponse(message, message.from, selectedNumber);
       if (processed) {
         console.log(`Mensaje procesado como respuesta numérica: ${selectedNumber}`);
         return; // El mensaje ya fue procesado como respuesta numérica
@@ -682,80 +684,64 @@ private async processMessageCommands(message: Message): Promise<void> {
       
       const db = await (await import('../database/mysql')).getDatabase();
       
-      // Obtener las secciones del comando
-      const sections = await db.query(
-        'SELECT id, title FROM list_sections WHERE command_id = ? ORDER BY id ASC', 
+      // Obtener el título de la lista desde la tabla de comandos
+      const listInfo = await db.query(
+        'SELECT title FROM custom_commands WHERE id = ?', 
         [commandId]
       );
       
-      console.log(`Query result para secciones:`, JSON.stringify(sections, null, 2));
+      const listTitle = Array.isArray(listInfo) && listInfo.length > 0 ? listInfo[0].title : 'Opciones disponibles';
       
+      // Obtener las secciones para este comando
+      const sections = await db.query(
+        'SELECT id, title FROM list_sections WHERE command_id = ? ORDER BY id ASC',
+        [commandId]
+      );
+      
+      // Verificar si hay secciones
       if (!Array.isArray(sections) || sections.length === 0) {
         console.log('El comando no tiene secciones definidas');
+        await message.reply(`${introText}\n\n⚠️ Este comando está configurado como lista pero no tiene secciones definidas.`);
+        return true;
+      }
+      
+      // Obtener los elementos de la primera sección
+      const sectionId = sections[0].id;
+      
+      const items = await db.query(
+        'SELECT id as item_id, row_id, title, response FROM list_items WHERE section_id = ? ORDER BY id ASC',
+        [sectionId]
+      );
+      
+      console.log(`Query result para items:`, JSON.stringify(items, null, 2));
+      
+      if (!Array.isArray(items) || items.length === 0) {
+        console.log('El comando no tiene elementos definidos');
         await message.reply(`${introText}\n\n⚠️ Este comando está configurado como lista pero no tiene opciones definidas.`);
         return true;
       }
       
-      console.log(`Encontradas ${sections.length} secciones para el comando`);
+      console.log(`Encontrados ${items.length} elementos para el comando`);
       
-      // Formatear las secciones con sus elementos
-      const formattedSections = [];
-      let totalItems = 0;
-      
-      for (const section of sections) {
-        console.log(`Procesando sección ID: ${section.id}, Título: "${section.title}"`);
+      // Verificar y preparar los elementos para mostrar
+      const formattedRows = items.map((item, index) => {
+        // Generar un ID único si no existe
+        const rowId = item.row_id || `item_${index}`;
         
-        const items = await db.query(
-          'SELECT row_id, title, description FROM list_items WHERE section_id = ? ORDER BY id ASC',
-          [section.id]
-        );
+        // Asegurarse de que el título no esté vacío
+        const rowTitle = item.title || `Opción ${index + 1}`;
         
-        console.log(`Query result para items de la sección ${section.id}:`, JSON.stringify(items, null, 2));
-        
-        if (Array.isArray(items) && items.length > 0) {
-          console.log(`Se encontraron ${items.length} elementos en la sección ${section.id}`);
-          totalItems += items.length;
-          
-          // Verificar y corregir la estructura de cada elemento
-          const formattedRows = items.map((item, index) => {
-            // Generar un ID único si no existe
-            const rowId = item.row_id || `item_${section.id}_${index}`;
-            
-            // Asegurarse de que el título no esté vacío
-            const rowTitle = item.title || `Opción ${index + 1}`;
-            
-            return {
-              id: rowId,
-              title: rowTitle,
-              description: item.description || ''
-            };
-          });
-          
-          formattedSections.push({
-            title: section.title || `Sección ${formattedSections.length + 1}`,
-            rows: formattedRows
-          });
-        } else {
-          console.log(`No se encontraron elementos en la sección ${section.id}`);
-        }
-      }
-      
-      console.log(`Total de secciones formateadas: ${formattedSections.length}`);
-      console.log(`Total de elementos encontrados: ${totalItems}`);
-      
-      if (formattedSections.length === 0) {
-        console.log('No se encontraron elementos en las secciones');
-        await message.reply(`${introText}\n\n⚠️ Este comando está configurado como lista pero no tiene elementos definidos.`);
-        return true;
-      }
-      
-      // Imprimir la estructura completa de las secciones formateadas para debug
-      console.log('Estructura final de secciones formateadas:', JSON.stringify(formattedSections, null, 2));
+        return {
+          id: rowId,
+          title: rowTitle,
+          response: item.response || ''
+        };
+      });
       
       // NOTA: Botones interactivos han sido deprecados por WhatsApp (julio 2024)
       // Por lo tanto, usamos directamente el formato de texto como solución principal
       console.log('Enviando opciones como mensaje de texto (los botones están deprecados)');
-      let textMessage = `${introText}\n\n`;
+      let textMessage = `${introText}\n\n*${listTitle}*\n\n`;
       let optionCount = 1;
       
       // Almacenar las opciones para este usuario
@@ -765,30 +751,23 @@ private async processMessageCommands(message: Message): Promise<void> {
         timestamp: Date.now()
       };
       
-      for (const section of formattedSections) {
-        if (section.title) {
-          textMessage += `*${section.title}*\n`;
-        }
+      // Agregar cada elemento como una opción numerada
+      formattedRows.forEach((row, index) => {
+        // Agregar opción al mensaje
+        textMessage += `${optionCount}. ${row.title}\n`;
         
-        if (Array.isArray(section.rows)) {
-          for (const row of section.rows) {
-            // Agregar opción al mensaje
-            textMessage += `${optionCount}. ${row.title}${row.description ? `: ${row.description}` : ''}\n`;
-            
-            // Almacenar esta opción en el mapa de opciones del usuario
-            userOptions.options.push({
-              number: optionCount,
-              title: row.title,
-              description: row.description || '',
-              sectionId: 0,  // Valor por defecto, deberíamos tener un ID más específico
-              itemId: row.id || String(optionCount)
-            });
-            
-            optionCount++;
-          }
-        }
-        textMessage += '\n';
-      }
+        // Almacenar esta opción en el mapa de opciones del usuario
+        userOptions.options.push({
+          number: optionCount,
+          title: row.title,
+          description: '',
+          sectionId: 0, // No hay secciones en la estructura plana
+          itemId: row.id || String(optionCount),
+          response: row.response
+        });
+        
+        optionCount++;
+      });
       
       textMessage += '\n📝 Responde con el número de la opción que deseas seleccionar.';
       
@@ -800,76 +779,85 @@ private async processMessageCommands(message: Message): Promise<void> {
         await message.reply(textMessage);
         console.log('Mensaje de texto con opciones enviado exitosamente');
         return true;
-      } catch (textError) {
-        console.error('Error al enviar mensaje de texto con opciones:', textError);
-        await message.reply('Lo siento, ha ocurrido un error al procesar este comando. Por favor, inténtalo más tarde.');
+      } catch (error) {
+        console.error('Error al enviar mensaje de lista:', error);
+        await message.reply('Lo siento, ocurrió un error al procesar tu solicitud.');
         return false;
       }
     } catch (error) {
       console.error('Error al procesar comando de lista:', error);
-      await message.reply('Lo siento, ha ocurrido un error al mostrar las opciones. Por favor, intenta más tarde.');
       return false;
     }
   }
   
-  // Procesar respuestas numéricas a opciones previamente enviadas
-  private async processNumericResponse(message: Message, number: number): Promise<boolean> {
+  // Método para procesar respuestas numéricas a las listas interactivas
+  private async processNumericResponse(message: Message, userPhone: string, chosenNumber: number): Promise<boolean> {
     try {
-      const userPhone = message.from;
+      console.log(`Procesando respuesta numérica: ${chosenNumber} del usuario ${userPhone}`);
       
-      // Verificar si tenemos opciones guardadas para este usuario
+      // Verificar si hay opciones guardadas para este usuario
       if (!this.userOptionsMap.has(userPhone)) {
-        console.log(`No hay opciones recientes guardadas para ${userPhone}`);
+        console.log(`No hay opciones guardadas para ${userPhone}`);
         return false;
       }
       
-      const userState = this.userOptionsMap.get(userPhone)!;
-      
+      const userOptions = this.userOptionsMap.get(userPhone);
+      if (!userOptions) {
+        console.log(`Opciones no encontradas para ${userPhone}`);
+        return false;
+      }
+
       // Verificar si las opciones no han expirado
-      if (Date.now() - userState.timestamp > this.OPTIONS_EXPIRY_TIME) {
+      if (Date.now() - userOptions.timestamp > this.OPTIONS_EXPIRY_TIME) {
         console.log(`Las opciones para ${userPhone} han expirado, eliminando...`);
         this.userOptionsMap.delete(userPhone);
         return false;
       }
       
-      // Buscar la opción seleccionada
-      const selectedOption = userState.options.find(opt => opt.number === number);
-      
-      // Si no se encuentra la opción, informar al usuario
+      // Verificar si la opción elegida existe
+      const selectedOption = userOptions.options.find(opt => opt.number === chosenNumber);
       if (!selectedOption) {
-        console.log(`Opción ${number} no válida para ${userPhone}. Opciones disponibles:`, 
-          userState.options.map(o => o.number));
-        await message.reply(`⚠️ El número ${number} no es una opción válida.`);
-        return true; // Consideramos que fue procesado aunque la opción no sea válida
+        console.log(`Opción ${chosenNumber} no válida para ${userPhone}. Opciones disponibles:`, 
+          userOptions.options.map(o => o.number));
+        await message.reply('El número que has seleccionado no es válido. Por favor, elige una opción disponible.');
+        return true;
       }
       
-      console.log(`Usuario ${userPhone} seleccionó la opción ${number}: ${selectedOption.title}`);
+      console.log(`Usuario ${userPhone} seleccionó la opción ${chosenNumber}: ${selectedOption.title}`);
       
-      // Obtener la base de datos
+      // Obtener la respuesta asociada a la opción seleccionada
+      if (selectedOption.response) {
+        await message.reply(selectedOption.response);
+        // Limpiar las opciones guardadas
+        this.userOptionsMap.delete(userPhone);
+        return true;
+      }
+      
+      // Si no hay respuesta directa, intentar buscarla en la base de datos
       const db = await (await import('../database/mysql')).getDatabase();
       
-      // Buscar si hay respuesta asociada a esta opción
       const listItemResponse = await db.query(
-        'SELECT response FROM list_items WHERE section_id = ? AND row_id = ?',
-        [selectedOption.sectionId, selectedOption.itemId]
+        `SELECT li.response FROM list_items li 
+         INNER JOIN list_sections ls ON li.section_id = ls.id 
+         WHERE ls.command_id = ? AND (li.row_id = ? OR li.id = ?)`,
+        [userOptions.commandId, selectedOption.itemId, selectedOption.itemId]
       );
       
-      // Enviar la respuesta si existe o un mensaje genérico
       if (Array.isArray(listItemResponse) && listItemResponse.length > 0 && listItemResponse[0].response) {
         await message.reply(listItemResponse[0].response);
       } else {
         await message.reply(`Has seleccionado: *${selectedOption.title}*${selectedOption.description ? ` - ${selectedOption.description}` : ''}`);
       }
       
-      // Eliminar las opciones guardadas para evitar respuestas duplicadas
+      // Limpiar las opciones guardadas
       this.userOptionsMap.delete(userPhone);
+      
       return true;
     } catch (error) {
       console.error('Error al procesar respuesta numérica:', error);
       return false;
     }
   }
-  
 
 }
 

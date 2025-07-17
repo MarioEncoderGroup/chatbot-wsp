@@ -40,25 +40,23 @@ export default function CommandsPage() {
   const fetchCommands = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/whatsapp/commands');
+      // Usar el nuevo parámetro type para obtener solo comandos de tipo texto
+      const response = await fetch('/api/whatsapp/commands?type=text');
       
       if (!response.ok) {
-        throw new Error(`Error al cargar comandos: ${response.status}`);
+        throw new Error('Error al cargar comandos');
       }
       
       const data = await response.json();
       
       if (data.success) {
-        // Filtrar solo los comandos de tipo 'text' o sin tipo (para compatibilidad con registros antiguos)
-        const textCommands = data.commands.filter((cmd: Command) => 
-          !cmd.response_type || cmd.response_type === 'text'
-        );
-        setCommands(textCommands);
+        // Ya no es necesario filtrar, la API devuelve solo comandos de tipo texto
+        setCommands(data.commands);
       } else {
-        throw new Error(data.message || 'Error al cargar comandos');
+        throw new Error('Error al cargar comandos');
       }
     } catch (err) {
-      setError((err as Error).message);
+      setError('Error de conexión. No se pudieron cargar los comandos.');
       console.error('Error al cargar comandos:', err);
     } finally {
       setLoading(false);
@@ -103,10 +101,15 @@ export default function CommandsPage() {
         setTimeout(() => setSuccessMessage(null), 3000);
         fetchCommands();
       } else {
-        setSubmitError(data.message || 'Error al añadir el comando');
+        // Personalizar mensajes de error comunes
+        if (data.message?.includes("Duplicate") || data.message?.includes("ER_DUP_ENTRY")) {
+          setSubmitError('Ya existe un comando con ese nombre. Por favor, usa otro nombre.');
+        } else {
+          setSubmitError('Error al añadir el comando. Verifica la información e intenta nuevamente.');
+        }
       }
     } catch (err) {
-      setSubmitError((err as Error).message);
+      setSubmitError('Error de conexión al intentar guardar el comando. Inténtalo de nuevo.');
       console.error('Error al añadir comando:', err);
     } finally {
       setIsSubmitting(false);
@@ -120,8 +123,12 @@ export default function CommandsPage() {
     }
     
     try {
-      const response = await fetch(`/api/whatsapp/commands?id=${id}`, {
+      // URL corregida para llamar al endpoint correcto
+      const response = await fetch(`/api/whatsapp/commands/${id}`, {
         method: 'DELETE',
+        headers: {
+          'Cache-Control': 'no-cache'
+        }
       });
       
       const data = await response.json();
@@ -131,10 +138,10 @@ export default function CommandsPage() {
         setTimeout(() => setSuccessMessage(null), 3000);
         fetchCommands();
       } else {
-        setError(data.message || 'Error al eliminar el comando');
+        setError('Error al eliminar el comando. Es posible que ya no exista o haya sido eliminado previamente.');
       }
     } catch (err) {
-      setError((err as Error).message);
+      setError('Error de conexión al intentar eliminar el comando. Inténtalo de nuevo.');
       console.error('Error al eliminar comando:', err);
     }
   };
@@ -142,7 +149,14 @@ export default function CommandsPage() {
   // Iniciar edición
   const startEditing = (command: Command) => {
     setEditingCommandId(command.id);
-    setEditCommand(command.command);
+    
+    // Normalizar el comando eliminando cualquier prefijo ! antes de mostrarlo en el formulario
+    let normalizedCommand = command.command;
+    if (normalizedCommand.startsWith('!')) {
+      normalizedCommand = normalizedCommand.substring(1);
+    }
+    
+    setEditCommand(normalizedCommand);
     setEditResponse(command.response);
     setEditUsePrefix(Boolean(command.use_prefix));
   };
@@ -160,13 +174,14 @@ export default function CommandsPage() {
       setIsSubmitting(true);
       setSubmitError(null);
       
-      const response = await fetch('/api/whatsapp/commands', {
+      // URL corregida para llamar al endpoint correcto
+      const response = await fetch(`/api/whatsapp/commands/${editingCommandId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache'
         },
         body: JSON.stringify({
-          id: editingCommandId,  // Incluir el ID en el cuerpo de la solicitud
           command: editCommand,
           response: editResponse,
           usePrefix: editUsePrefix, // Ya está en camelCase como lo espera el backend
@@ -181,10 +196,15 @@ export default function CommandsPage() {
         setEditingCommandId(null);
         fetchCommands();
       } else {
-        setSubmitError(data.message || 'Error al actualizar el comando');
+        // Personalizar mensajes de error comunes
+        if (data.message?.includes("Duplicate") || data.message?.includes("ER_DUP_ENTRY")) {
+          setSubmitError('Ya existe un comando con ese nombre. Por favor, usa otro nombre.');
+        } else {
+          setSubmitError('Error al actualizar el comando. Verifica la información e intenta nuevamente.');
+        }
       }
     } catch (err) {
-      setSubmitError((err as Error).message);
+      setSubmitError('Error de conexión al intentar actualizar el comando. Inténtalo de nuevo.');
       console.error('Error al actualizar comando:', err);
     } finally {
       setIsSubmitting(false);
@@ -434,7 +454,7 @@ export default function CommandsPage() {
                           // Vista normal
                           <>
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                              {command.use_prefix ? `!${command.command}` : command.command}
+                              {command.command}
                             </td>
                             <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">
                               {command.response}

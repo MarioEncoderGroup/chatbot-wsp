@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter as useNextRouter } from "next/navigation";
 import Header from "../components/Header";
 
 interface SessionInfo {
@@ -20,7 +20,7 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
-  const router = useRouter();
+  const router = useNextRouter();
 
   // Cargar la información de la sesión
   const fetchSessionInfo = async () => {
@@ -59,29 +59,30 @@ export default function SettingsPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Cache-Control": "no-cache"
         },
         body: JSON.stringify({
           action: "logout",
         }),
       });
       
+      if (!response.ok) {
+        throw new Error(`Error del servidor: ${response.status}`);
+      }
+      
       const data = await response.json();
       
       if (data.success) {
-        setActionSuccess("Sesión cerrada exitosamente");
+        // Mostrar mensaje de éxito pero NO redireccionar automáticamente
+        setActionSuccess("Sesión cerrada exitosamente. El estado se actualizará en breve.");
         // Actualizar la información de sesión
         fetchSessionInfo();
-        
-        // Redirigir después de un momento
-        setTimeout(() => {
-          router.push("/qr");
-        }, 2000);
       } else {
         setError(data.message || "Error al cerrar sesión");
       }
     } catch (err) {
-      setError("Error de conexión con el servidor");
-      console.error(err);
+      console.error('Error al cerrar sesión:', err);
+      setError(err instanceof Error ? err.message : "Error de conexión con el servidor");
     } finally {
       setActionLoading(false);
     }
@@ -89,7 +90,7 @@ export default function SettingsPage() {
 
   // Eliminar completamente los datos de sesión
   const handleDeleteSession = async () => {
-    if (!confirm("¿Estás seguro que deseas eliminar TODOS los datos de sesión? Esto eliminará la autenticación y requerirá un nuevo escaneo del código QR.")) {
+    if (!confirm('¿Estás seguro que deseas eliminar TODOS los datos de sesión? Esto eliminará la autenticación y requerirá un nuevo escaneo del código QR.')) {
       return;
     }
     
@@ -98,33 +99,35 @@ export default function SettingsPage() {
       setError(null);
       setActionSuccess(null);
       
-      const response = await fetch("/api/whatsapp/session", {
-        method: "POST",
+      const response = await fetch('/api/whatsapp/session', {
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache'
         },
         body: JSON.stringify({
-          action: "delete",
+          action: 'delete',
         }),
       });
+      
+      if (!response.ok) {
+        throw new Error(`Error del servidor: ${response.status}`);
+      }
       
       const data = await response.json();
       
       if (data.success) {
-        setActionSuccess("Datos de sesión eliminados exitosamente");
-        // Actualizar la información de sesión
-        fetchSessionInfo();
+        // Mostrar mensaje de éxito pero NO redireccionar automáticamente
+        setActionSuccess('Datos de sesión eliminados exitosamente. Puedes escanear un nuevo código QR cuando lo necesites.');
         
-        // Redirigir después de un momento
-        setTimeout(() => {
-          router.push("/qr");
-        }, 2000);
+        // Actualizar la información de sesión para mostrar el nuevo estado
+        fetchSessionInfo();
       } else {
-        setError(data.message || "Error al eliminar datos de sesión");
+        setError(data.message || 'Error al eliminar datos de sesión');
       }
     } catch (err) {
-      setError("Error de conexión con el servidor");
-      console.error(err);
+      console.error('Error al eliminar datos de sesión:', err);
+      setError(err instanceof Error ? err.message : 'Error de conexión con el servidor');
     } finally {
       setActionLoading(false);
     }

@@ -36,20 +36,20 @@ export default function Header() {
           </div>
           
           {/* Menú para desktop */}
-          <div className="hidden md:flex items-center space-x-6">
-            <Link href="/" className="text-gray-700 hover:text-green-600 transition">
+          <div className="hidden md:flex items-center">
+            <Link href="/" className="text-gray-700 hover:text-green-600 transition px-3 py-2">
               Dashboard
             </Link>
-            <Link href="/qr" className="text-gray-700 hover:text-green-600 transition">
+            <Link href="/qr" className="text-gray-700 hover:text-green-600 transition px-3 py-2">
               Conectar WhatsApp
             </Link>
-            <Link href="/commands" className="text-gray-700 hover:text-green-600 transition">
+            <Link href="/commands" className="text-gray-700 hover:text-green-600 transition px-3 py-2">
               Comandos
             </Link>
-            <Link href="/lists" className="text-gray-700 hover:text-green-600 transition">
+            <Link href="/lists" className="text-gray-700 hover:text-green-600 transition px-3 py-2">
               Listas
             </Link>
-            <Link href="/settings" className="text-gray-700 hover:text-green-600 transition">
+            <Link href="/settings" className="text-gray-700 hover:text-green-600 transition px-3 py-2">
               Configuración
             </Link>
           </div>
