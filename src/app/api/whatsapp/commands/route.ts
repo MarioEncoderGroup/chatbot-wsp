@@ -162,7 +162,7 @@ export async function POST(req: NextRequest) {
       }, { status: 409 });
     }
     
-    // Iniciar transacción para asegurar que todos los datos se guardan correctamente
+    // Iniciar transacción para integridad de datos
     const connection = await (db as any).pool.getConnection();
     await connection.beginTransaction();
     

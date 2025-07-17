@@ -5,7 +5,7 @@ export async function DELETE() {
   try {
     const db = await getDatabase();
 
-    // Primero eliminamos todos los elementos de las listas
+    // Eliminar elementos de listas
     await db.query(`
       DELETE FROM list_items 
       WHERE command_id IN (
@@ -13,7 +13,7 @@ export async function DELETE() {
       );
     `);
 
-    // Luego eliminamos todos los comandos de tipo lista
+    // Eliminar comandos de tipo lista
     const result = await db.query(`
       DELETE FROM custom_commands 
       WHERE type = 'list';

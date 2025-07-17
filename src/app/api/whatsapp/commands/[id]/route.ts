@@ -39,10 +39,8 @@ export async function PUT(
       use_prefix
     } = body;
     
-    // Determinar el tipo de respuesta (preferir camelCase, pero aceptar snake_case como fallback)
+    // Unificar formato de los campos desde diferentes fuentes
     const finalResponseType = responseType || response_type;
-    
-    // Determinar si debe usar prefijo (preferir camelCase, pero aceptar snake_case como fallback)
     const finalUsePrefix = usePrefix !== undefined ? usePrefix : (use_prefix !== undefined ? use_prefix : undefined);
     
     if (!id) {
@@ -52,7 +50,7 @@ export async function PUT(
       }, { status: 400 });
     }
 
-    // Validaciones básicas - el título solo es obligatorio para comandos de tipo lista
+    // El título solo es obligatorio para comandos de tipo lista
     if (finalResponseType === 'list' && !title) {
       return NextResponse.json({
         success: false,

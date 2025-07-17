@@ -13,16 +13,16 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    // Convertir los IDs a placeholders para la consulta SQL
+    // Generar placeholders para la consulta SQL
     const placeholders = commands.map(() => '?').join(',');
     
-    // Eliminar los elementos de las listas
+    // Eliminar elementos de listas seleccionadas
     await db.query(`
       DELETE FROM list_items 
       WHERE command_id IN (${placeholders});
     `, commands);
 
-    // Eliminar los comandos
+    // Eliminar comandos seleccionados
     const result = await db.query(`
       DELETE FROM custom_commands 
       WHERE id IN (${placeholders});

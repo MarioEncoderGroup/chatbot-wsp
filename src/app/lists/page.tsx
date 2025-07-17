@@ -285,10 +285,8 @@ export default function ListsPage() {
         }
       }
 
-      // Preparar datos para enviar con valores predeterminados seguros
-      // Primero normalizar el comando para evitar duplicación de prefijos
+      // Normalizar el comando eliminando cualquier prefijo existente
       let normalizedCommand = command.trim();
-      // Eliminar cualquier prefijo existente antes de enviarlo
       if (normalizedCommand.startsWith('!')) {
         normalizedCommand = normalizedCommand.substring(1);
       }
@@ -418,10 +416,8 @@ export default function ListsPage() {
 
       setLoading(true);
 
-      // Preparar datos con valores seguros
-      // Primero normalizar el comando para evitar duplicación de prefijos
+      // Normalizar el comando eliminando cualquier prefijo existente
       let normalizedCommand = editCommand.trim();
-      // Eliminar cualquier prefijo existente antes de enviarlo
       if (normalizedCommand.startsWith('!')) {
         normalizedCommand = normalizedCommand.substring(1);
       }

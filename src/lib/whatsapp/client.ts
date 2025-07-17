@@ -6,7 +6,7 @@ import { promisify } from 'util';
 import axios from 'axios';
 import * as os from 'os';
 
-// Evento personalizado para comunicar eventos de WhatsApp a otras partes de la aplicación
+// Emisor de eventos para WhatsApp
 class WhatsAppEvents extends EventEmitter {}
 export const whatsappEvents = new WhatsAppEvents();
 

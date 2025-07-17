@@ -50,7 +50,6 @@ export default function CommandsPage() {
       const data = await response.json();
       
       if (data.success) {
-        // Ya no es necesario filtrar, la API devuelve solo comandos de tipo texto
         setCommands(data.commands);
       } else {
         throw new Error('Error al cargar comandos');
@@ -184,7 +183,7 @@ export default function CommandsPage() {
         body: JSON.stringify({
           command: editCommand,
           response: editResponse,
-          usePrefix: editUsePrefix, // Ya está en camelCase como lo espera el backend
+          usePrefix: editUsePrefix,
         }),
       });
       
